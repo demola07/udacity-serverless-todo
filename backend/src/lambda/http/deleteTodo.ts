@@ -3,7 +3,7 @@ import { APIGatewayProxyEvent, APIGatewayProxyResult, APIGatewayProxyHandler } f
 import { deleteTodo } from '../../businessLogic/todos';
 
 export const handler: APIGatewayProxyHandler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-  // delete todo and if it fails, return error
+  // delete todo and if it fails, return an error
   if (!(await deleteTodo(event))) {
     return {
       statusCode: 404,

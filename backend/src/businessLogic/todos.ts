@@ -11,14 +11,15 @@ import { createLogger } from '../utils/logger'
 const todosAccess = new TodosAccess();
 const todosStorage = new TodosStorage();
 const logger = createLogger('todos')
+
 /**
- *
  * Create a todolist item
  * @export
  * @param {APIGatewayProxyEvent} event
  * @param {CreateTodoRequest} createTodoRequest
  * @returns {Promise<TodoItem>}
  */
+
 export async function createTodo(event: APIGatewayProxyEvent,
     createTodoRequest: CreateTodoRequest): Promise<TodoItem> {
     const todoId = uuid.v4();
@@ -34,14 +35,13 @@ export async function createTodo(event: APIGatewayProxyEvent,
         ...createTodoRequest
     };
 
-    logger.info('Storing new item: ' + JSON.stringify(todoItem));
+    logger.info('add new item: ' + JSON.stringify(todoItem));
     await todosAccess.addTodoToDB(todoItem);
 
     return todoItem;
 }
 /**
  * Delete a todo list item from database
- *
  * @export
  * @param {APIGatewayProxyEvent} event
  * @returns
@@ -58,9 +58,9 @@ export async function deleteTodo(event: APIGatewayProxyEvent) {
 
     return true;
 }
+
 /**
  * get a Todo list item from database.
- *
  * @export
  * @param {APIGatewayProxyEvent} event
  * @returns
@@ -71,9 +71,9 @@ export async function getTodo(event: APIGatewayProxyEvent) {
 
     return await todosAccess.getTodoFromDB(todoId, userId);
 }
+
 /**
  * get ToDo list from database
- *
  * @export
  * @param {APIGatewayProxyEvent} event
  * @returns
@@ -83,9 +83,9 @@ export async function getTodos(event: APIGatewayProxyEvent) {
 
     return await todosAccess.getAllTodosFromDB(userId);
 }
+
 /**
  *  update ToDo list to database
- *
  * @export
  * @param {APIGatewayProxyEvent} event
  * @param {UpdateTodoRequest} updateTodoRequest
@@ -103,9 +103,8 @@ export async function updateTodo(event: APIGatewayProxyEvent,
 
     return true;
 }
+
 /**
- *
- *
  * @export
  * @param {APIGatewayProxyEvent} event
  * @returns
