@@ -1,101 +1,138 @@
-import 'source-map-support/register'
-
-import * as uuid from 'uuid'
-
-import { TodosAccess } from '../dataLayer/TodosAccess'
-import { TodosStorage } from '../dataLayer/TodosStorage'
-import { TodoItem } from '../models/TodoItem'
-import { TodoUpdate } from '../models/TodoUpdate'
-import { CreateTodoRequest } from '../requests/CreateTodoRequest'
-import { UpdateTodoRequest } from '../requests/UpdateTodoRequest'
+import 'source-map-support/register';
+import * as uuid from 'uuid';
+import { APIGatewayProxyEvent } from 'aws-lambda';
+import { getUserId } from '../lambda/utils';
+import TodosAccess from '../dataLayer/todosAccess';
+import TodosStorage from '../dataLayer/todosStorage';
+import { TodoItem } from '../models/TodoItem';
+import { CreateTodoRequest } from '../requests/CreateTodoRequest';
+import { UpdateTodoRequest } from '../requests/UpdateTodoRequest';
 import { createLogger } from '../utils/logger'
-
+const todosAccess = new TodosAccess();
+const todosStorage = new TodosStorage();
 const logger = createLogger('todos')
+/**
+ *
+ * Create a todolist item
+ * @export
+ * @param {APIGatewayProxyEvent} event
+ * @param {CreateTodoRequest} createTodoRequest
+ * @returns {Promise<TodoItem>}
+ */
+export async function createTodo(event: APIGatewayProxyEvent,
+    createTodoRequest: CreateTodoRequest): Promise<TodoItem> {
+    const todoId = uuid.v4();
+    const userId = getUserId(event);
+    const createdAt = new Date(Date.now()).toISOString();
 
-const todosAccess = new TodosAccess()
-const todosStorage = new TodosStorage()
-
-export async function getTodos(userId: string): Promise<TodoItem[]> {
-    logger.info(`Retrieving all todos for user ${userId}`, { userId })
-
-    return await todosAccess.getTodoItems(userId)
-}
-
-export async function createTodo(userId: string, createTodoRequest: CreateTodoRequest): Promise<TodoItem> {
-    const todoId = uuid.v4()
-
-    const newItem: TodoItem = {
+    const todoItem = {
         userId,
         todoId,
-        createdAt: new Date().toISOString(),
+        createdAt,
         done: false,
-        attachmentUrl: null,
+        //attachmentUrl: `https://${todosStorage.getBucketName()}.s3-eu-west-1.amazonaws.com/images/${todoId}.jpg`,
         ...createTodoRequest
+    };
+
+    logger.info('Storing new item: ' + JSON.stringify(todoItem));
+    await todosAccess.addTodoToDB(todoItem);
+
+    return todoItem;
+}
+/**
+ * Delete a todo list item from database
+ *
+ * @export
+ * @param {APIGatewayProxyEvent} event
+ * @returns
+ */
+export async function deleteTodo(event: APIGatewayProxyEvent) {
+    const todoId = event.pathParameters.todoId;
+    const userId = getUserId(event);
+
+    if (!(await todosAccess.getTodoFromDB(todoId, userId))) {
+        return false;
     }
 
-    logger.info(`Creating todo ${todoId} for user ${userId}`, { userId, todoId, todoItem: newItem })
+    await todosAccess.deleteTodoFromDB(todoId, userId);
 
-    await todosAccess.createTodoItem(newItem)
-
-    return newItem
+    return true;
 }
+/**
+ * get a Todo list item from database.
+ *
+ * @export
+ * @param {APIGatewayProxyEvent} event
+ * @returns
+ */
+export async function getTodo(event: APIGatewayProxyEvent) {
+    const todoId = event.pathParameters.todoId;
+    const userId = getUserId(event);
 
-export async function updateTodo(userId: string, todoId: string, updateTodoRequest: UpdateTodoRequest) {
-    logger.info(`Updating todo ${todoId} for user ${userId}`, { userId, todoId, todoUpdate: updateTodoRequest })
+    return await todosAccess.getTodoFromDB(todoId, userId);
+}
+/**
+ * get ToDo list from database
+ *
+ * @export
+ * @param {APIGatewayProxyEvent} event
+ * @returns
+ */
+export async function getTodos(event: APIGatewayProxyEvent) {
+    const userId = getUserId(event);
 
-    const item = await todosAccess.getTodoItem(todoId)
+    return await todosAccess.getAllTodosFromDB(userId);
+}
+/**
+ *  update ToDo list to database
+ *
+ * @export
+ * @param {APIGatewayProxyEvent} event
+ * @param {UpdateTodoRequest} updateTodoRequest
+ * @returns
+ */
+export async function updateTodo(event: APIGatewayProxyEvent,
+    updateTodoRequest: UpdateTodoRequest) {
+    const todoId = event.pathParameters.todoId;
+    const userId = getUserId(event);
 
-    if (!item)
-        throw new Error('Item not found')  // FIXME: 404?
+    if (!(await todosAccess.getTodoFromDB(todoId, userId))) {
+        return false;
+    }
+    await todosAccess.updateTodoInDB(todoId, userId, updateTodoRequest);
 
-    if (item.userId !== userId) {
-        logger.error(`User ${userId} does not have permission to update todo ${todoId}`)
-        throw new Error('User is not authorized to update item')  // FIXME: 403?
+    return true;
+}
+/**
+ *
+ *
+ * @export
+ * @param {APIGatewayProxyEvent} event
+ * @returns
+ */
+export async function generateUploadUrl(event: APIGatewayProxyEvent) {
+    const bucket = todosStorage.getBucketName();
+    const urlExpiration = +process.env.SIGNED_URL_EXPIRATION;
+    const todoId = event.pathParameters.todoId;
+    const userId = getUserId(event);
+
+    const attachmentUrl = `https://${todosStorage.getBucketName()}.s3-eu-west-1.amazonaws.com/images/${todoId}.png`;
+
+    const CreateSignedUrlRequest = {
+        Bucket: bucket,
+        Key: `images/${todoId}.png`,
+        Expires: urlExpiration
     }
 
-    todosAccess.updateTodoItem(todoId, updateTodoRequest as TodoUpdate)
-}
+    var result = await todosStorage.getPresignedUploadURL(CreateSignedUrlRequest);
+    logger.info("todosStorage.getPresignedUploadURL", result);
 
-export async function deleteTodo(userId: string, todoId: string) {
-    logger.info(`Deleting todo ${todoId} for user ${userId}`, { userId, todoId })
-
-    const item = await todosAccess.getTodoItem(todoId)
-
-    if (!item)
-        throw new Error('Item not found')  // FIXME: 404?
-
-    if (item.userId !== userId) {
-        logger.error(`User ${userId} does not have permission to delete todo ${todoId}`)
-        throw new Error('User is not authorized to delete item')  // FIXME: 403?
+    //update attachment Info to DB.
+    if (!(await todosAccess.getTodoFromDB(todoId, userId))) {
+        return false;
     }
+    logger.info(`{todoId} :: {userId} :: {attachmentUrl}`);
+    await todosAccess.updateAttachmentInDB(todoId, userId, attachmentUrl);
 
-    todosAccess.deleteTodoItem(todoId)
-}
-
-export async function updateAttachmentUrl(userId: string, todoId: string, attachmentId: string) {
-    logger.info(`Generating attachment URL for attachment ${attachmentId}`)
-
-    const attachmentUrl = await todosStorage.getAttachmentUrl(attachmentId)
-
-    logger.info(`Updating todo ${todoId} with attachment URL ${attachmentUrl}`, { userId, todoId })
-
-    const item = await todosAccess.getTodoItem(todoId)
-
-    if (!item)
-        throw new Error('Item not found')  // FIXME: 404?
-
-    if (item.userId !== userId) {
-        logger.error(`User ${userId} does not have permission to update todo ${todoId}`)
-        throw new Error('User is not authorized to update item')  // FIXME: 403?
-    }
-
-    await todosAccess.updateAttachmentUrl(todoId, attachmentUrl)
-}
-
-export async function generateUploadUrl(attachmentId: string): Promise<string> {
-    logger.info(`Generating upload URL for attachment ${attachmentId}`)
-
-    const uploadUrl = await todosStorage.getUploadUrl(attachmentId)
-
-    return uploadUrl
+    return result;
 }

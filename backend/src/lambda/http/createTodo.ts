@@ -1,43 +1,12 @@
-// import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda'
-// import 'source-map-support/register'
-// import * as middy from 'middy'
-// import { cors } from 'middy/middlewares'
-// import { CreateTodoRequest } from '../../requests/CreateTodoRequest'
-// import { getUserId } from '../utils';
-// import { createTodo } from '../../businessLogic/todos'
-
-// export const handler = middy(
-//   async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-//     const newTodo: CreateTodoRequest = JSON.parse(event.body)
-//     // TODO: Implement creating a new TODO item
-
-//     return undefined
-// )
-
-// handler.use(
-//   cors({
-//     credentials: true
-//   })
-// )
-
-
-import 'source-map-support/register'
-
-import { APIGatewayProxyEvent, APIGatewayProxyHandler, APIGatewayProxyResult } from 'aws-lambda'
-
-import { createTodo } from '../../businessLogic/todos'
-import { CreateTodoRequest } from '../../requests/CreateTodoRequest'
-import { createLogger } from '../../utils/logger'
-import { getUserId } from '../utils'
-
-const logger = createLogger('createTodo')
+import 'source-map-support/register';
+import { APIGatewayProxyEvent, APIGatewayProxyHandler, APIGatewayProxyResult } from 'aws-lambda';
+import { CreateTodoRequest } from '../../requests/CreateTodoRequest';
+import { createTodo } from '../../businessLogic/todos';
 
 export const handler: APIGatewayProxyHandler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-  logger.info('Processing createTodo event', { event })
+  const newTodo: CreateTodoRequest = JSON.parse(event.body);
 
-  const userId = getUserId(event)
-  const newTodo: CreateTodoRequest = JSON.parse(event.body)
-
+  // todoItem cannot  is not empty
   if (!newTodo.name) {
     return {
       statusCode: 400,
@@ -47,7 +16,7 @@ export const handler: APIGatewayProxyHandler = async (event: APIGatewayProxyEven
     };
   }
 
-  const newItem = await createTodo(userId, newTodo)
+  const todoItem = await createTodo(event, newTodo);
 
   return {
     statusCode: 201,
@@ -56,7 +25,7 @@ export const handler: APIGatewayProxyHandler = async (event: APIGatewayProxyEven
       'Access-Control-Allow-Credentials': true
     },
     body: JSON.stringify({
-      item: newItem
+      item: todoItem
     })
-  }
+  };
 }

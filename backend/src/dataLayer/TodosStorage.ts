@@ -1,30 +1,53 @@
-import 'source-map-support/register'
+import { CreateSignedUrlRequest } from '../requests/CreateSignedUrlRequest';
+import * as AWS from 'aws-sdk';
+import * as AWSXRay from 'aws-xray-sdk';
+import { createLogger } from '../utils/logger'
+const XAWS = AWSXRay.captureAWS(AWS);
 
-import * as AWS from 'aws-sdk'
-import * as AWSXRay from 'aws-xray-sdk'
+const s3 = new XAWS.S3({
+  signatureVersion: 'v4'
+})
+const todosStorage = process.env.ATTACHMENTS_S3_BUCKET;
 
-const XAWS = AWSXRay.captureAWS(AWS)
 
-export class TodosStorage {
-
+const logger = createLogger('TodosStorage')
+//env: process.env.AWS_BUCKET
+export default class TodosStorage {
   constructor(
-    private readonly s3 = new XAWS.S3({ signatureVersion: 'v4' }),
-    private readonly bucketName = process.env.ATTACHMENTS_S3_BUCKET,
-    private readonly urlExpiration = process.env.SIGNED_URL_EXPIRATION
-  ) {}
 
-  async getAttachmentUrl(attachmentId: string): Promise<string> {
-      const attachmentUrl = `https://${this.bucketName}.s3.amazonaws.com/${attachmentId}`
-      return attachmentUrl
+  ) { }
+  /**
+   *To get the storage bucket name
+   *
+   * @returns
+   * @memberof TodosStorage
+   */
+  getBucketName() {
+    return todosStorage;
+  }
+  /**
+   * Get the item using Signed Url
+   *
+   * @param {CreateSignedUrlRequest} CreateSignedUrlRequest
+   * @returns
+   * @memberof TodosStorage
+   */
+  async getPresignedUploadURL(createSignedUrlRequest: CreateSignedUrlRequest) {
+    logger.info('getPresignedUploadURL', {
+      requestData: createSignedUrlRequest
+    });
+    const signedUrl = await this.getSignedUrl(createSignedUrlRequest);
+    return signedUrl;
   }
 
-  async getUploadUrl(attachmentId: string): Promise<string> {
-    const uploadUrl = this.s3.getSignedUrl('putObject', {
-      Bucket: this.bucketName,
-      Key: attachmentId,
-      Expires: this.urlExpiration
+
+  async getSignedUrl(createSignedUrlRequest: CreateSignedUrlRequest) {
+    return new Promise((resolve, reject) => {
+      let params = { Bucket: createSignedUrlRequest.Bucket, Key: createSignedUrlRequest.Key, Expires: createSignedUrlRequest.Expires };
+      s3.getSignedUrl('putObject', params, (err, url) => {
+        if (err) reject(err)
+        resolve(url);
+      })
     })
-    return uploadUrl
   }
-
 }
